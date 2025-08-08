@@ -3,7 +3,7 @@
  * Modern ES6+ implementation with BD Design Guide v3.0
  *
  * @package BD_Product_Sheet_Editor
- * @version 2.1.0
+ * @version 2.1.1
  */
 
 (function($) {

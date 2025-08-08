@@ -15,7 +15,7 @@
 - WordPress 5.0 eller nyere
 - WooCommerce plugin aktivert
 - PHP 7.4 eller nyere
-- Tillatelse til å administrere WooCommerce
+- Tillatelse til å administrere WooCommerce.
 
 ## 🔧 Installasjon
 
