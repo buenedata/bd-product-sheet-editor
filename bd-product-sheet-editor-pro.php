@@ -350,8 +350,6 @@ function bd_render_brands_tab() {
     <?php
 }
 
-}
-
 // AJAX Handlers
 add_action('wp_ajax_bd_update_product_field', 'bd_handle_product_field_update');
 add_action('wp_ajax_bd_update_parent_cat', 'bd_handle_parent_category_update');
