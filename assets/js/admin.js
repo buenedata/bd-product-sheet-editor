@@ -3,7 +3,7 @@
  * Modern ES6+ implementation with BD Design Guide v3.0
  *
  * @package BD_Product_Sheet_Editor
- * @version 2.1.1
+ * @version 2.1.2
  */
 
 (function($) {
@@ -529,7 +529,7 @@ function throttle(func, limit) {
 
 // Console styling for BD branding
 console.log(
-    '%c🚀 BD Product Sheet Editor %cv2.1.0',
+    '%c🚀 BD Product Sheet Editor %cv2.1.2',
     'color: #667eea; font-weight: bold; font-size: 16px;',
     'color: #64748b; font-size: 12px;'
 );
