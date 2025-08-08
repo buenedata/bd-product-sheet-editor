@@ -52,29 +52,22 @@ jobs:
           COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
         fi
         
-        cat > changelog.md << 'EOF'
-        ## 🚀 Endringer i versjon ${{ steps.version.outputs.current_version }}
-        
-        ### Nye funksjoner og forbedringer:
-        EOF
-        echo "$COMMITS" >> changelog.md
-        cat >> changelog.md << 'EOF'
-        
-        ### 📋 Installasjon:
-        1. Last ned ZIP-filen fra denne releasen
-        2. Gå til WordPress Admin → Plugins → Legg til ny → Last opp plugin
-        3. Velg ZIP-filen og installer
-        4. Aktiver pluginen
-        
-        ### 🔄 Automatisk oppdatering:
-        Denne versjonen støtter automatisk oppdatering via WordPress admin.
-        
-        *🤖 Automatisk generert av GitHub Actions*
-        EOF
-        
-        CHANGELOG=$(cat changelog.md)
         echo "changelog<<EOF" >> $GITHUB_OUTPUT
-        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "## 🚀 Endringer i versjon ${{ steps.version.outputs.current_version }}" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### Nye funksjoner og forbedringer:" >> $GITHUB_OUTPUT
+        echo "$COMMITS" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### 📋 Installasjon:" >> $GITHUB_OUTPUT
+        echo "1. Last ned ZIP-filen fra denne releasen" >> $GITHUB_OUTPUT
+        echo "2. Gå til WordPress Admin → Plugins → Legg til ny → Last opp plugin" >> $GITHUB_OUTPUT
+        echo "3. Velg ZIP-filen og installer" >> $GITHUB_OUTPUT
+        echo "4. Aktiver pluginen" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### 🔄 Automatisk oppdatering:" >> $GITHUB_OUTPUT
+        echo "Denne versjonen støtter automatisk oppdatering via WordPress admin." >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "*🤖 Automatisk generert av GitHub Actions*" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Create plugin ZIP
