@@ -529,7 +529,7 @@ function throttle(func, limit) {
 
 // Console styling for BD branding
 console.log(
-    '%c🚀 BD Product Sheet Editor %cv1.3.0',
+    '%c🚀 BD Product Sheet Editor %cv2.1.0',
     'color: #667eea; font-weight: bold; font-size: 16px;',
     'color: #64748b; font-size: 12px;'
 );
