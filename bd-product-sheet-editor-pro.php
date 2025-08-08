@@ -2,7 +2,7 @@
 /*
 Plugin Name: BD Product Sheet Editor Pro
 Description: 📊 Spreadsheet editor for WooCommerce products, categories, and brands.
-Version: 2.1.4
+Version: 2.2.0
 Author: Buene Data
 Author URI: https://buenedata.no
 Plugin URI: https://github.com/buenedata/bd-product-sheet-editor
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('BD_PSE_VERSION', '2.1.4');
+define('BD_PSE_VERSION', '2.2.0');
 define('BD_PSE_FILE', __FILE__);
 define('BD_PSE_PATH', plugin_dir_path(__FILE__));
 define('BD_PSE_URL', plugin_dir_url(__FILE__));
@@ -30,7 +30,7 @@ define('BD_PSE_BASENAME', plugin_basename(__FILE__));
 // Initialize updater
 if (is_admin()) {
     require_once BD_PSE_PATH . 'includes/class-bd-updater.php';
-    new BD_Plugin_Updater(BD_PSE_FILE, 'buenedata', 'bd-product-sheet-editor');
+    new BD_Product_Sheet_Editor_Updater(BD_PSE_FILE, 'buenedata', 'bd-product-sheet-editor');
 }
 
 // Initialize update server

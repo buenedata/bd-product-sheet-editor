@@ -11,7 +11,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class BD_Plugin_Updater {
+if (!class_exists('BD_Product_Sheet_Editor_Updater')) {
+class BD_Product_Sheet_Editor_Updater {
     private $plugin_file;
     private $github_username;
     private $github_repo;
@@ -25,7 +26,8 @@ class BD_Plugin_Updater {
         $this->github_username = $github_username;
         $this->github_repo = $github_repo;
         $this->plugin_basename = plugin_basename($plugin_file);
-        $this->plugin_slug = dirname($this->plugin_basename);
+        // CRITICAL FIX: Use repository name as slug instead of directory name
+        $this->plugin_slug = $github_repo;
         
         // Get version from plugin header
         if (!function_exists('get_plugin_data')) {
@@ -44,7 +46,14 @@ class BD_Plugin_Updater {
         
         // Add update notice
         add_action('admin_notices', [$this, 'update_notice']);
+        
+        // Debug logging
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("BD_Product_Sheet_Editor_Updater initialized for {$this->plugin_basename} (slug: {$this->plugin_slug}, version: {$this->version})");
+        }
     }
+}
+}
 
     /**
      * Check for plugin updates
@@ -54,8 +63,17 @@ class BD_Plugin_Updater {
             return $transient;
         }
 
-        // Get remote version
+        // CRITICAL: Check that plugin is in checked list
+        if (!isset($transient->checked[$this->plugin_basename])) {
+            return $transient;
+        }
+
         $remote_version = $this->get_remote_version();
+        
+        // Debug logging
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("BD Update Check: Current version: {$this->version}, Remote version: {$remote_version}");
+        }
         
         if (version_compare($this->version, $remote_version, '<')) {
             $transient->response[$this->plugin_basename] = (object) [
@@ -67,11 +85,23 @@ class BD_Plugin_Updater {
                 'tested' => '6.4',
                 'requires_php' => '7.4',
                 'compatibility' => new stdClass(),
+                'id' => $this->plugin_basename, // CRITICAL: Add ID field
                 'icons' => [
                     '1x' => 'https://buenedata.no/wp-content/uploads/2023/11/logo-buene-data-dark.svg',
                     '2x' => 'https://buenedata.no/wp-content/uploads/2023/11/logo-buene-data-dark.svg',
                 ],
             ];
+            
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("BD Update Available: {$this->plugin_basename} can be updated from {$this->version} to {$remote_version}");
+            }
+        } else {
+            // CRITICAL: Remove from response if no update needed
+            unset($transient->response[$this->plugin_basename]);
+            
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("BD Update Check: No update needed for {$this->plugin_basename}");
+            }
         }
 
         return $transient;

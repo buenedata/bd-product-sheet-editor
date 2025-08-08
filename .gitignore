@@ -1,36 +1,105 @@
-# BD Internal Files - Not for production
+# Production .gitignore for BD Product Sheet Editor Pro
+
+# Development and Internal Files (not for production)
 BD-Plugin-Design-Guide.txt
 BD-GitHub-Update-System-Guide.txt
 DEPLOYMENT-GUIDE.md
-README.md
+DEBUG-WORKFLOW.md
+GITHUB-ACTIONS-FIX.md
+PRIVATE-REPO-SOLUTION.md
+QUICK-DEBUG-GUIDE.md
+TESTING-INSTRUCTIONS.md
+SUCCESS-INSTRUCTIONS.md
 
-# Development and Documentation
-*.md
-!README.md
+# Version management scripts (development only)
+update-version.sh
+update-version.js
+update-version.ps1
+VERSION-SCRIPTS-README.md
+BD-Version-Management-Guide.md
 
-# WordPress
-wp-config.php
-wp-content/uploads/
-wp-content/cache/
+# Test files
+test-updater.php
+tests/
+phpunit.xml
+*.test.php
 
-# Node.js
+# Build and dependency files
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+vendor/
+composer.lock
+package-lock.json
+yarn.lock
 
-# IDE
+# Build artifacts
+dist/
+build/
+temp/
+*.zip
+
+# Development tools
+webpack.config.js
+gulpfile.js
+Gruntfile.js
+rollup.config.js
+vite.config.js
+
+# Package managers
+package.json
+package-lock.json
+composer.json
+composer.lock
+
+# IDE and Editor files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-*
+.editorconfig
 
-# OS
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+debug.log
+error.log
 
-# Git
+# WordPress specific
+wp-config.php
+wp-content/uploads/
+wp-content/cache/
+wp-content/debug.log
+
+# Git files
 .gitattributes
+.gitmodules
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+
+# Documentation that shouldn't be in production
+*.md
+!README.md

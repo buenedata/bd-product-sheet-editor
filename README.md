@@ -2,13 +2,19 @@
 
 📊 **Avansert spreadsheet-editor for WooCommerce produkter, kategorier og merker**
 
+**Versjon:** 2.2.0
+**Sist oppdatert:** 8. august 2025
+**WordPress kompatibilitet:** 5.0 - 6.4+
+**PHP krav:** 7.4+
+
 ## 🚀 Funksjoner
 
 - **Produktredigering**: Rediger produktnavn, priser, SKU, lager og kategorier direkte i tabellformat
 - **Kategorihåndtering**: Administrer produktkategorier og deres hierarki
 - **Moderne design**: Følger BD Design Guide v3.0 med gradients og responsiv layout
 - **Automatisk lagring**: Endringer lagres automatisk når du redigerer
-- **GitHub-basert oppdatering**: Automatiske oppdateringer via GitHub releases
+- **GitHub-basert oppdatering**: Automatiske oppdateringer via GitHub releases med forbedret stabilitet
+- **Produksjonsklart**: Optimalisert for produksjonsmiljøer med proper caching og feilhåndtering
 
 ## 📋 Systemkrav
 
@@ -42,7 +48,14 @@ git clone https://github.com/buenedata/bd-product-sheet-editor.git
 
 ## 🔄 Automatisk Oppdatering
 
-Denne pluginen støtter automatisk oppdatering via GitHub:
+Denne pluginen støtter automatisk oppdatering via GitHub med forbedret stabilitet:
+
+### Nye forbedringer i v2.2.0
+- **Forbedret plugin slug detection**: Bruker repository navn i stedet for directory navn
+- **Bedre update check logikk**: Proper validering og feilhåndtering
+- **API caching**: 12-timers cache for GitHub API kall
+- **Debug logging**: Omfattende logging for feilsøking
+- **Produksjonsoptimalisering**: Renset opp development filer
 
 ### For utviklere
 
@@ -273,6 +286,23 @@ Dette prosjektet er lisensiert under GPL v2 eller senere.
 - WooCommerce team
 - GitHub Actions team
 - Alle bidragsytere
+
+## 📝 Changelog
+
+### v2.2.0 (8. august 2025)
+- **🔧 Kritiske rettelser for WordPress update notifications**
+- **✅ Fikset plugin slug detection** - Bruker repository navn i stedet for directory navn
+- **🚀 Forbedret update check logikk** - Proper validering og feilhåndtering
+- **⚡ Implementert API caching** - 12-timers cache for GitHub API kall med transients
+- **🐛 Lagt til omfattende debug logging** - For bedre feilsøking og monitorering
+- **📦 Produksjonsoptimalisering** - Oppdatert .gitignore og fjernet development filer
+- **🔒 Forbedret sikkerhet** - Bedre input validering og error handling
+
+### v2.1.4 (tidligere)
+- Grunnleggende GitHub update system implementering
+- WordPress update integration
+- BD Design Guide v3.0 styling
+- Automatisk lagring funksjonalitet
 
 ---
 
