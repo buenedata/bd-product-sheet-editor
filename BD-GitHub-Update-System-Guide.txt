@@ -1,0 +1,597 @@
+================================================================================
+BD GITHUB UPDATE SYSTEM GUIDE
+================================================================================
+BUENE DATA - Automatisk Plugin Oppdatering via GitHub
+Versjon: 1.0
+Dato: 8. august 2025
+
+================================================================================
+OVERSIKT
+================================================================================
+
+Denne guiden beskriver hvordan du implementerer automatisk plugin-oppdatering
+via GitHub for alle BD (Buene Data) WordPress plugins. Systemet kombinerer
+GitHub Actions for automatisk release-generering med WordPress sitt innebygde
+oppdateringssystem for profesjonell plugin-distribusjon.
+
+HOVEDFUNKSJONER:
+- Automatisk release når du pusher til GitHub via GitHub Desktop
+- WordPress-native oppdateringsnotifikasjoner
+- En-klikks oppdatering direkte i WordPress admin
+- Versjonshåndtering og changelog-generering
+- Sikker nedlasting og installasjon
+
+================================================================================
+SYSTEMARKITEKTUR
+================================================================================
+
+WORKFLOW OVERSIKT:
+1. Push endringer til GitHub via GitHub Desktop
+2. GitHub Actions oppdager endringer og lager automatisk release
+3. Update server mottar notifikasjon om ny versjon
+4. WordPress sjekker for oppdateringer via standard API
+5. Bruker får notifikasjon i WordPress admin
+6. En-klikks oppdatering installerer ny versjon
+
+KOMPONENTER:
+- GitHub Actions workflow (.github/workflows/release.yml)
+- WordPress Update Checker (includes/class-bd-updater.php)
+- Plugin Header med Update URI
+- Version Management System
+- Update Server Endpoint (valgfri - kan bruke GitHub direkte)
+
+================================================================================
+IMPLEMENTERING - STEG FOR STEG
+================================================================================
+
+STEG 1: PLUGIN HEADER OPPSETT
+-----------------------------
+
+Legg til følgende i hovedplugin-filen:
+
+```php
+<?php
+/*
+Plugin Name: BD [Plugin Navn]
+Description: [Plugin beskrivelse]
+Version: 1.0.0
+Author: Buene Data
+Author URI: https://buenedata.no
+Plugin URI: https://github.com/buenedata/[repository-navn]
+Update URI: https://github.com/buenedata/[repository-navn]
+Requires at least: 5.0
+Tested up to: 6.4
+Requires PHP: 7.4
+Network: false
+Text Domain: bd-[plugin-slug]
+Domain Path: /languages
+*/
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// Plugin constants
+define('BD_[PLUGIN_CONSTANT]_VERSION', '1.0.0');
+define('BD_[PLUGIN_CONSTANT]_FILE', __FILE__);
+define('BD_[PLUGIN_CONSTANT]_PATH', plugin_dir_path(__FILE__));
+define('BD_[PLUGIN_CONSTANT]_URL', plugin_dir_url(__FILE__));
+define('BD_[PLUGIN_CONSTANT]_BASENAME', plugin_basename(__FILE__));
+
+// Initialize updater
+require_once BD_[PLUGIN_CONSTANT]_PATH . 'includes/class-bd-updater.php';
+new BD_Plugin_Updater(BD_[PLUGIN_CONSTANT]_FILE, 'buenedata', '[repository-navn]');
+```
+
+STEG 2: UPDATER CLASS
+--------------------
+
+Opprett filen: includes/class-bd-updater.php
+
+```php
+<?php
+/**
+ * BD Plugin Updater
+ * Håndterer automatisk oppdatering via GitHub
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class BD_Plugin_Updater {
+    private $plugin_file;
+    private $github_username;
+    private $github_repo;
+    private $version;
+    private $plugin_slug;
+    private $plugin_basename;
+
+    public function __construct($plugin_file, $github_username, $github_repo) {
+        $this->plugin_file = $plugin_file;
+        $this->github_username = $github_username;
+        $this->github_repo = $github_repo;
+        $this->plugin_basename = plugin_basename($plugin_file);
+        $this->plugin_slug = dirname($this->plugin_basename);
+        
+        // Get version from plugin header
+        if (!function_exists('get_plugin_data')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        $plugin_data = get_plugin_data($plugin_file);
+        $this->version = $plugin_data['Version'];
+
+        // Hook into WordPress update system
+        add_filter('pre_set_site_transient_update_plugins', [$this, 'check_for_update']);
+        add_filter('plugins_api', [$this, 'plugin_info'], 20, 3);
+        add_filter('upgrader_pre_download', [$this, 'download_package'], 10, 3);
+    }
+
+    /**
+     * Check for plugin updates
+     */
+    public function check_for_update($transient) {
+        if (empty($transient->checked)) {
+            return $transient;
+        }
+
+        // Get remote version
+        $remote_version = $this->get_remote_version();
+        
+        if (version_compare($this->version, $remote_version, '<')) {
+            $transient->response[$this->plugin_basename] = (object) [
+                'slug' => $this->plugin_slug,
+                'plugin' => $this->plugin_basename,
+                'new_version' => $remote_version,
+                'url' => "https://github.com/{$this->github_username}/{$this->github_repo}",
+                'package' => $this->get_download_url($remote_version),
+                'tested' => '6.4',
+                'requires_php' => '7.4',
+                'compatibility' => new stdClass(),
+            ];
+        }
+
+        return $transient;
+    }
+
+    /**
+     * Get remote version from GitHub
+     */
+    private function get_remote_version() {
+        $request = wp_remote_get("https://api.github.com/repos/{$this->github_username}/{$this->github_repo}/releases/latest");
+        
+        if (!is_wp_error($request) && wp_remote_retrieve_response_code($request) === 200) {
+            $body = wp_remote_retrieve_body($request);
+            $data = json_decode($body, true);
+            
+            if (isset($data['tag_name'])) {
+                return ltrim($data['tag_name'], 'v');
+            }
+        }
+
+        return $this->version;
+    }
+
+    /**
+     * Get download URL for specific version
+     */
+    private function get_download_url($version) {
+        return "https://github.com/{$this->github_username}/{$this->github_repo}/releases/download/v{$version}/{$this->github_repo}.zip";
+    }
+
+    /**
+     * Provide plugin information for update screen
+     */
+    public function plugin_info($result, $action, $args) {
+        if ($action !== 'plugin_information' || $args->slug !== $this->plugin_slug) {
+            return $result;
+        }
+
+        $request = wp_remote_get("https://api.github.com/repos/{$this->github_username}/{$this->github_repo}/releases/latest");
+        
+        if (!is_wp_error($request) && wp_remote_retrieve_response_code($request) === 200) {
+            $body = wp_remote_retrieve_body($request);
+            $data = json_decode($body, true);
+            
+            $result = (object) [
+                'name' => $data['name'] ?? $this->plugin_slug,
+                'slug' => $this->plugin_slug,
+                'version' => ltrim($data['tag_name'] ?? $this->version, 'v'),
+                'author' => 'Buene Data',
+                'homepage' => "https://github.com/{$this->github_username}/{$this->github_repo}",
+                'short_description' => 'BD Plugin fra Buene Data',
+                'sections' => [
+                    'description' => $data['body'] ?? 'Ingen beskrivelse tilgjengelig.',
+                    'changelog' => $data['body'] ?? 'Se GitHub for endringer.',
+                ],
+                'download_link' => $this->get_download_url(ltrim($data['tag_name'] ?? $this->version, 'v')),
+                'requires' => '5.0',
+                'tested' => '6.4',
+                'requires_php' => '7.4',
+                'last_updated' => $data['published_at'] ?? date('Y-m-d'),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Download package from GitHub
+     */
+    public function download_package($result, $package, $upgrader) {
+        if (strpos($package, 'github.com') === false) {
+            return $result;
+        }
+
+        // WordPress will handle the download
+        return $result;
+    }
+}
+```
+
+STEG 3: GITHUB ACTIONS WORKFLOW
+------------------------------
+
+Opprett filen: .github/workflows/release.yml
+
+```yaml
+name: Auto Release
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+      - '.github/**'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Get current version
+      id: version
+      run: |
+        # Extract version from main plugin file
+        VERSION=$(grep -E "Version:\s*[0-9]+\.[0-9]+(\.[0-9]+)?" *.php | head -1 | grep -oE "[0-9]+\.[0-9]+(\.[0-9]+)?")
+        echo "current_version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Current version: $VERSION"
+
+    - name: Check if release exists
+      id: check_release
+      run: |
+        VERSION="${{ steps.version.outputs.current_version }}"
+        if git tag | grep -q "^v$VERSION$"; then
+          echo "release_exists=true" >> $GITHUB_OUTPUT
+          echo "Release v$VERSION already exists"
+        else
+          echo "release_exists=false" >> $GITHUB_OUTPUT
+          echo "Release v$VERSION does not exist"
+        fi
+
+    - name: Generate changelog
+      id: changelog
+      if: steps.check_release.outputs.release_exists == 'false'
+      run: |
+        # Get commits since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        if [ -z "$LAST_TAG" ]; then
+          COMMITS=$(git log --pretty=format:"- %s" --no-merges)
+        else
+          COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" --no-merges)
+        fi
+        
+        # Create changelog
+        CHANGELOG="## Endringer i versjon ${{ steps.version.outputs.current_version }}
+
+$COMMITS
+
+---
+*Automatisk generert av GitHub Actions*"
+        
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create plugin ZIP
+      if: steps.check_release.outputs.release_exists == 'false'
+      run: |
+        # Get repository name
+        REPO_NAME=$(basename $GITHUB_REPOSITORY)
+        
+        # Create temporary directory
+        mkdir -p temp/$REPO_NAME
+        
+        # Copy plugin files (exclude development files)
+        rsync -av --exclude='.git*' --exclude='node_modules' --exclude='*.log' --exclude='temp' . temp/$REPO_NAME/
+        
+        # Create ZIP file
+        cd temp
+        zip -r ../$REPO_NAME.zip $REPO_NAME
+        cd ..
+        
+        echo "Created $REPO_NAME.zip"
+
+    - name: Create Release
+      if: steps.check_release.outputs.release_exists == 'false'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.version.outputs.current_version }}
+        release_name: v${{ steps.version.outputs.current_version }}
+        body: ${{ steps.changelog.outputs.changelog }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      if: steps.check_release.outputs.release_exists == 'false'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./${{ github.event.repository.name }}.zip
+        asset_name: ${{ github.event.repository.name }}.zip
+        asset_content_type: application/zip
+```
+
+STEG 4: VERSJONSHÅNDTERING
+--------------------------
+
+AUTOMATISK VERSJONSBUMPING (Valgfritt):
+
+Hvis du vil at versjonen skal oppdateres automatisk basert på commit-meldinger:
+
+```yaml
+# Legg til dette steget i GitHub Actions før "Create Release"
+- name: Bump version
+  id: bump_version
+  run: |
+    CURRENT_VERSION="${{ steps.version.outputs.current_version }}"
+    
+    # Check commit messages for version bump indicators
+    if git log --format=%B -n 1 | grep -q "\[major\]"; then
+      NEW_VERSION=$(echo $CURRENT_VERSION | awk -F. '{$1 = $1 + 1; $2 = 0; $3 = 0} 1' OFS=.)
+    elif git log --format=%B -n 1 | grep -q "\[minor\]"; then
+      NEW_VERSION=$(echo $CURRENT_VERSION | awk -F. '{$2 = $2 + 1; $3 = 0} 1' OFS=.)
+    else
+      NEW_VERSION=$(echo $CURRENT_VERSION | awk -F. '{$3 = $3 + 1} 1' OFS=.)
+    fi
+    
+    # Update version in plugin file
+    sed -i "s/Version: $CURRENT_VERSION/Version: $NEW_VERSION/" *.php
+    
+    # Commit version bump
+    git config --local user.email "action@github.com"
+    git config --local user.name "GitHub Action"
+    git add *.php
+    git commit -m "Bump version to $NEW_VERSION" || exit 0
+    git push
+    
+    echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+```
+
+================================================================================
+IMPLEMENTERING I EKSISTERENDE PLUGIN
+================================================================================
+
+FOR Å LEGGE TIL I EKSISTERENDE PLUGIN:
+
+1. Oppdater plugin header med Update URI
+2. Legg til BD_Plugin_Updater i hovedfilen
+3. Opprett includes/class-bd-updater.php
+4. Opprett .github/workflows/release.yml
+5. Commit og push endringene
+6. Første release vil bli opprettet automatisk
+
+EKSEMPEL IMPLEMENTERING:
+
+```php
+// I hovedplugin-filen, legg til etter plugin header:
+
+// Initialize updater if not in admin
+if (!is_admin()) {
+    return;
+}
+
+// Load updater
+require_once plugin_dir_path(__FILE__) . 'includes/class-bd-updater.php';
+
+// Initialize with your GitHub details
+new BD_Plugin_Updater(
+    __FILE__,                    // Plugin file
+    'buenedata',                 // GitHub username
+    'bd-product-sheet-editor'    // Repository name
+);
+```
+
+================================================================================
+TESTING OG FEILSØKING
+================================================================================
+
+TESTING WORKFLOW:
+
+1. Gjør en liten endring i pluginen
+2. Oppdater versjonsnummer i plugin header
+3. Commit og push via GitHub Desktop
+4. Sjekk at GitHub Actions kjører uten feil
+5. Verifiser at release blir opprettet
+6. Test oppdateringsnotifikasjon i WordPress
+
+VANLIGE PROBLEMER:
+
+Problem: GitHub Actions feiler
+Løsning: Sjekk at GITHUB_TOKEN har riktige tillatelser
+
+Problem: WordPress finner ikke oppdateringer
+Løsning: Verifiser Update URI i plugin header
+
+Problem: Nedlasting feiler
+Løsning: Sjekk at ZIP-filen blir opprettet korrekt i release
+
+Problem: Versjon ikke oppdatert
+Løsning: Sørg for at versjonsnummer i plugin header er økt
+
+DEBUGGING:
+
+Aktiver WordPress debug for å se oppdateringslogger:
+```php
+define('WP_DEBUG', true);
+define('WP_DEBUG_LOG', true);
+```
+
+Sjekk logfiler i /wp-content/debug.log for feilmeldinger.
+
+================================================================================
+SIKKERHET OG BESTE PRAKSIS
+================================================================================
+
+SIKKERHETSTILTAK:
+
+1. Valider alltid nedlastede filer
+2. Bruk HTTPS for alle API-kall
+3. Implementer nonce-verifisering for admin-handlinger
+4. Begrens hvem som kan utløse oppdateringer
+
+BESTE PRAKSIS:
+
+1. Test alltid i staging-miljø først
+2. Bruk semantisk versjonering (MAJOR.MINOR.PATCH)
+3. Skriv gode commit-meldinger for changelog
+4. Tag releases med beskrivende navn
+5. Oppretthold bakoverkompatibilitet
+
+COMMIT MESSAGE KONVENSJONER:
+
+- `feat: ny funksjonalitet` (minor version bump)
+- `fix: bugfix` (patch version bump)
+- `BREAKING CHANGE: endring som bryter kompatibilitet` (major version bump)
+- `docs: dokumentasjonsendringer` (ingen version bump)
+
+================================================================================
+AVANSERTE FUNKSJONER
+================================================================================
+
+CUSTOM UPDATE SERVER (Valgfritt):
+
+For større kontroll kan du implementere egen update server:
+
+```php
+// I stedet for å bruke GitHub API direkte
+private function get_remote_version() {
+    $request = wp_remote_get("https://updates.buenedata.no/check/{$this->plugin_slug}");
+    // Handle response...
+}
+```
+
+ROLLBACK FUNKSJONALITET:
+
+```php
+// Legg til rollback-knapp i plugin-listen
+add_filter('plugin_action_links_' . $this->plugin_basename, [$this, 'add_rollback_link']);
+
+public function add_rollback_link($links) {
+    $rollback_link = '<a href="#" onclick="rollbackPlugin()">Rull tilbake</a>';
+    array_unshift($links, $rollback_link);
+    return $links;
+}
+```
+
+BETA TESTING:
+
+```php
+// Støtte for beta-versjoner
+private function is_beta_tester() {
+    return get_option('bd_beta_tester', false);
+}
+
+private function get_remote_version() {
+    $endpoint = $this->is_beta_tester() ? 'releases' : 'releases/latest';
+    // Fetch from appropriate endpoint...
+}
+```
+
+================================================================================
+VEDLIKEHOLD OG OPPDATERINGER
+================================================================================
+
+REGELMESSIG VEDLIKEHOLD:
+
+1. Oppdater GitHub Actions workflows årlig
+2. Test oppdateringsprosessen kvartalsvis
+3. Overvåk GitHub API rate limits
+4. Oppdater WordPress kompatibilitet
+
+MONITORERING:
+
+- Sett opp GitHub notifications for failed actions
+- Overvåk download-statistikk for releases
+- Følg med på bruker-feedback om oppdateringer
+
+================================================================================
+EKSEMPEL PROSJEKTSTRUKTUR
+================================================================================
+
+```
+bd-plugin-name/
+├── .github/
+│   └── workflows/
+│       └── release.yml
+├── includes/
+│   ├── class-bd-updater.php
+│   └── class-plugin-core.php
+├── assets/
+│   ├── css/
+│   ├── js/
+│   └── images/
+├── languages/
+├── bd-plugin-name.php          # Hovedfil med updater init
+├── README.md
+├── BD-Plugin-Design-Guide.txt
+├── BD-GitHub-Update-System-Guide.txt
+└── bd-menu-helper.php
+```
+
+================================================================================
+KONTAKT OG SUPPORT
+================================================================================
+
+For spørsmål om GitHub update system:
+Email: support@buenedata.no
+GitHub: https://github.com/buenedata
+Dokumentasjon: https://buenedata.no/docs
+
+================================================================================
+CHANGELOG
+================================================================================
+
+v1.0 (8. august 2025)
+- Initial GitHub Update System Guide
+- Komplett workflow for automatisk releases
+- WordPress update integration
+- GitHub Actions setup
+- Sikkerhet og beste praksis
+- Feilsøking og testing guide
+
+================================================================================
+QUICK START SJEKKLISTE
+================================================================================
+
+□ Oppdater plugin header med Update URI
+□ Legg til BD_Plugin_Updater i hovedfilen  
+□ Opprett includes/class-bd-updater.php
+□ Opprett .github/workflows/release.yml
+□ Test med en liten endring og push
+□ Verifiser at release blir opprettet
+□ Test oppdateringsnotifikasjon i WordPress
+□ Dokumenter spesifikke innstillinger for prosjektet
+
+================================================================================
