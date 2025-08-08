@@ -6,8 +6,14 @@ on:
     paths-ignore:
       - 'README.md'
       - '.gitignore'
-      - '.github/**'
-      - '*.md'
+      - 'DEBUG-WORKFLOW.md'
+      - 'DEPLOYMENT-GUIDE.md'
+      - 'GITHUB-ACTIONS-FIX.md'
+      - 'PRIVATE-REPO-SOLUTION.md'
+      - 'QUICK-DEBUG-GUIDE.md'
+      - 'TESTING-INSTRUCTIONS.md'
+      - 'SUCCESS-INSTRUCTIONS.md'
+  workflow_dispatch:
 
 permissions:
   contents: write
