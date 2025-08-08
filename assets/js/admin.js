@@ -1,9 +1,9 @@
 /**
  * BD Product Sheet Editor - Admin JavaScript
  * Modern ES6+ implementation with BD Design Guide v3.0
- * 
+ *
  * @package BD_Product_Sheet_Editor
- * @version 1.3.0
+ * @version 2.1.0
  */
 
 (function($) {
@@ -35,6 +35,7 @@
             // Header action buttons
             $(document).on('click', '[onclick*="bdPSE.exportData"]', this.exportData);
             $(document).on('click', '[onclick*="bdPSE.refreshData"]', this.refreshData);
+            $(document).on('click', '#bd-check-updates', this.checkForUpdates);
             
             // Form submission feedback
             $('form').on('submit', this.handleFormSubmit);
@@ -382,6 +383,79 @@
             // Check on load and resize
             handleTableResponsive();
             $(window).on('resize', handleTableResponsive);
+        },
+
+        /**
+         * Manual update check functionality
+         */
+        checkForUpdates: function() {
+            const $button = $('#bd-check-updates');
+            if (!$button.length) return;
+            
+            const originalText = $button.text();
+            
+            // Update button state
+            $button.addClass('bd-loading').prop('disabled', true);
+            $button.text('🔄 Sjekker oppdateringer...');
+            
+            // Prepare AJAX data
+            const data = {
+                action: 'bd_check_for_updates',
+                nonce: bdPSE.nonce
+            };
+            
+            // Send AJAX request
+            fetch(bdPSE.ajaxurl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                // Reset button state
+                $button.removeClass('bd-loading').prop('disabled', false);
+                $button.text(originalText);
+                
+                if (result.success) {
+                    if (result.data.update_available) {
+                        bdPSE.showNotice(
+                            `🎉 Ny versjon tilgjengelig: ${result.data.latest_version}! Gå til Plugin-siden for å oppdatere.`,
+                            'success'
+                        );
+                        
+                        // Optionally redirect to plugins page after a delay
+                        setTimeout(() => {
+                            if (confirm('Vil du gå til Plugin-siden for å oppdatere nå?')) {
+                                window.location.href = admin_url + 'plugins.php';
+                            }
+                        }, 2000);
+                    } else {
+                        bdPSE.showNotice(
+                            '✅ Du har allerede den nyeste versjonen installert.',
+                            'info'
+                        );
+                    }
+                } else {
+                    bdPSE.showNotice(
+                        '❌ Kunne ikke sjekke for oppdateringer. Prøv igjen senere.',
+                        'error'
+                    );
+                    console.error('Update check error:', result.data || 'Unknown error');
+                }
+            })
+            .catch(error => {
+                // Reset button state
+                $button.removeClass('bd-loading').prop('disabled', false);
+                $button.text(originalText);
+                
+                bdPSE.showNotice(
+                    '❌ Nettverksfeil ved sjekking av oppdateringer.',
+                    'error'
+                );
+                console.error('Update check network error:', error);
+            });
         }
     };
 

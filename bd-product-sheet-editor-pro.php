@@ -2,7 +2,7 @@
 /*
 Plugin Name: BD Product Sheet Editor Pro
 Description: 📊 Spreadsheet editor for WooCommerce products, categories, and brands.
-Version: 2.0.1
+Version: 2.1.0
 Author: Buene Data
 Author URI: https://buenedata.no
 Plugin URI: https://github.com/buenedata/bd-product-sheet-editor
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('BD_PSE_VERSION', '2.0.1');
+define('BD_PSE_VERSION', '2.1.0');
 define('BD_PSE_FILE', __FILE__);
 define('BD_PSE_PATH', plugin_dir_path(__FILE__));
 define('BD_PSE_URL', plugin_dir_url(__FILE__));
@@ -107,6 +107,9 @@ function bd_product_sheet_editor_page() {
                 </button>
                 <button type="button" class="button button-secondary" onclick="bdPSE.refreshData()">
                     🔄 Oppdater
+                </button>
+                <button type="button" class="button button-secondary" onclick="bdPSE.checkForUpdates()" id="bd-check-updates">
+                    🔍 Sjekk oppdateringer
                 </button>
             </div>
         </div>
@@ -353,6 +356,7 @@ function bd_render_brands_tab() {
 add_action('wp_ajax_bd_update_product_field', 'bd_handle_product_field_update');
 add_action('wp_ajax_bd_update_parent_cat', 'bd_handle_parent_category_update');
 add_action('wp_ajax_bd_update_product_cat', 'bd_handle_category_update');
+add_action('wp_ajax_bd_check_for_updates', 'bd_handle_check_for_updates');
 
 /**
  * Handle product field updates
@@ -467,5 +471,76 @@ function bd_handle_category_update() {
         wp_send_json_success(['message' => 'Category updated successfully']);
     } else {
         wp_send_json_error(['message' => $result->get_error_message()]);
+    }
+}
+
+/**
+ * Handle manual update check
+ */
+function bd_handle_check_for_updates() {
+    // Verify nonce
+    if (!wp_verify_nonce($_POST['nonce'], 'bd_pse_nonce')) {
+        wp_send_json_error(['message' => 'Security check failed']);
+    }
+    
+    // Check permissions
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(['message' => 'Insufficient permissions']);
+    }
+    
+    try {
+        // Get current version
+        $current_version = BD_PSE_VERSION;
+        
+        // Check GitHub for latest release
+        $request = wp_remote_get('https://api.github.com/repos/buenedata/bd-product-sheet-editor/releases/latest', [
+            'timeout' => 15,
+            'headers' => [
+                'Accept' => 'application/vnd.github.v3+json',
+                'User-Agent' => 'BD-Plugin-Updater/1.0',
+            ]
+        ]);
+        
+        if (is_wp_error($request)) {
+            wp_send_json_error(['message' => 'Kunne ikke koble til GitHub: ' . $request->get_error_message()]);
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($request);
+        if ($response_code !== 200) {
+            wp_send_json_error(['message' => 'GitHub API feil: HTTP ' . $response_code]);
+        }
+        
+        $body = wp_remote_retrieve_body($request);
+        $data = json_decode($body, true);
+        
+        if (!$data || !isset($data['tag_name'])) {
+            wp_send_json_error(['message' => 'Ugyldig respons fra GitHub API']);
+        }
+        
+        $latest_version = ltrim($data['tag_name'], 'v');
+        $update_available = version_compare($current_version, $latest_version, '<');
+        
+        // Clear WordPress update cache to force refresh
+        delete_site_transient('update_plugins');
+        
+        $response = [
+            'current_version' => $current_version,
+            'latest_version' => $latest_version,
+            'update_available' => $update_available,
+            'release_date' => $data['published_at'] ?? '',
+            'release_notes' => wp_trim_words(strip_tags($data['body'] ?? ''), 30),
+            'download_url' => $data['html_url'] ?? '',
+        ];
+        
+        if ($update_available) {
+            $response['message'] = "🎉 Ny versjon tilgjengelig! v{$latest_version} (du har v{$current_version})";
+        } else {
+            $response['message'] = "✅ Du har den nyeste versjonen (v{$current_version})";
+        }
+        
+        wp_send_json_success($response);
+        
+    } catch (Exception $e) {
+        wp_send_json_error(['message' => 'Feil ved sjekk av oppdateringer: ' . $e->getMessage()]);
     }
 }

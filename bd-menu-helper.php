@@ -50,6 +50,24 @@ if (!function_exists('bd_add_buene_data_menu')) {
     }
 }
 
+// Helper function to check if plugin has GitHub integration
+if (!function_exists('bd_plugin_has_github_integration')) {
+    function bd_plugin_has_github_integration($plugin_file) {
+        $plugin_path = WP_PLUGIN_DIR . '/' . $plugin_file;
+        $plugin_dir = dirname($plugin_path);
+        
+        // Check if plugin has GitHub updater classes or update URI
+        $has_updater = file_exists($plugin_dir . '/includes/class-bd-updater.php');
+        $has_update_server = file_exists($plugin_dir . '/includes/class-bd-update-server.php');
+        
+        // Check plugin header for Update URI
+        $plugin_data = get_file_data($plugin_path, ['UpdateURI' => 'Update URI']);
+        $has_update_uri = !empty($plugin_data['UpdateURI']) && strpos($plugin_data['UpdateURI'], 'github.com') !== false;
+        
+        return $has_updater || $has_update_server || $has_update_uri;
+    }
+}
+
 // Denne callbacken lager oversiktssiden (bare én plugin trenger å ha denne!)
 if (!function_exists('bd_buene_data_overview_page')) {
     function bd_buene_data_overview_page() {
@@ -143,13 +161,22 @@ if (!function_exists('bd_buene_data_overview_page')) {
                     $admin_slug = 'bd-cleandash';
                 } elseif (stripos($plugin['Name'], 'Client Suite') !== false) {
                     $admin_slug = 'bd-client-suite';
+                } elseif (stripos($plugin['Name'], 'Product Sheet Editor') !== false) {
+                    $admin_slug = 'bd-product-sheet-editor';
                 } else {
                     // Fallback til å bruke plugin-mappe navn
                     $admin_slug = explode('/', $plugin['File'])[0];
                 }
                 
                 $url = admin_url('admin.php?page=' . $admin_slug);
+                echo '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">';
                 echo '<a href="' . esc_url($url) . '" class="button button-primary" style="background:' . $card_gradient . ';color:white;border:none;border-radius:7px;padding:8px 24px;font-weight:600;font-size:14px;box-shadow:0 1px 3px rgba(14,165,233,0.12);transition:all .2s;">Åpne innstillinger</a>';
+                
+                // Add update check button for plugins with GitHub integration
+                if (bd_plugin_has_github_integration($plugin['File'])) {
+                    echo '<button type="button" class="button bd-check-updates-btn" data-plugin="' . esc_attr($plugin['File']) . '" style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;border-radius:7px;padding:8px 16px;font-weight:600;font-size:14px;transition:all .2s;">🔍 Sjekk oppdatering</button>';
+                }
+                echo '</div>';
             } else {
                 echo '<span class="button" style="background:#f1f5f9;color:#a0aec0;border:none;border-radius:7px;padding:8px 24px;font-weight:600;font-size:14px;">Ikke aktivert</span>';
             }
@@ -171,7 +198,167 @@ if (!function_exists('bd_buene_data_overview_page')) {
         @media (max-width: 800px) { .bd-settings-grid { grid-template-columns:1fr !important; } .bd-plugin-card { padding:24px 12px;}}
         .bd-label {display: inline-block; padding: 4px 10px; border-radius: 14px; font-size: 12px; font-weight: 500;}
         .button-primary:focus { outline: 2px solid #0ea5e9; }
+        .bd-check-updates-btn:hover { background: #e2e8f0 !important; border-color: #cbd5e1 !important; }
+        .bd-check-updates-btn.bd-loading { opacity: 0.7; cursor: not-allowed; }
+        .bd-update-notice { margin-top: 12px; padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+        .bd-update-notice.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .bd-update-notice.info { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+        .bd-update-notice.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
         </style>
+
+        <script>
+        jQuery(document).ready(function($) {
+            // Handle update check button clicks
+            $('.bd-check-updates-btn').on('click', function(e) {
+                e.preventDefault();
+                
+                const $button = $(this);
+                const pluginFile = $button.data('plugin');
+                const $card = $button.closest('.bd-plugin-card');
+                const originalText = $button.text();
+                
+                // Update button state
+                $button.addClass('bd-loading').prop('disabled', true);
+                $button.text('🔄 Sjekker...');
+                
+                // Remove any existing notices
+                $card.find('.bd-update-notice').remove();
+                
+                // Send AJAX request
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'bd_menu_check_updates',
+                        plugin_file: pluginFile,
+                        nonce: '<?php echo wp_create_nonce('bd_menu_updates'); ?>'
+                    },
+                    success: function(response) {
+                        // Reset button state
+                        $button.removeClass('bd-loading').prop('disabled', false);
+                        $button.text(originalText);
+                        
+                        if (response.success) {
+                            const data = response.data;
+                            let noticeClass = data.update_available ? 'success' : 'info';
+                            let message = data.update_available
+                                ? `🎉 Ny versjon tilgjengelig: ${data.latest_version}! Gå til Plugin-siden for å oppdatere.`
+                                : `✅ Du har den nyeste versjonen (${data.current_version})`;
+                            
+                            $button.after(`<div class="bd-update-notice ${noticeClass}">${message}</div>`);
+                            
+                            // Auto-hide notice after 8 seconds
+                            setTimeout(() => {
+                                $card.find('.bd-update-notice').fadeOut(300, function() {
+                                    $(this).remove();
+                                });
+                            }, 8000);
+                            
+                        } else {
+                            $button.after(`<div class="bd-update-notice error">❌ ${response.data || 'Kunne ikke sjekke for oppdateringer'}</div>`);
+                        }
+                    },
+                    error: function() {
+                        // Reset button state
+                        $button.removeClass('bd-loading').prop('disabled', false);
+                        $button.text(originalText);
+                        
+                        $button.after('<div class="bd-update-notice error">❌ Nettverksfeil ved sjekking av oppdateringer</div>');
+                    }
+                });
+            });
+        });
+        </script>
         <?php
+    }
+}
+
+// AJAX handler for menu update checks
+if (!function_exists('bd_handle_menu_update_check')) {
+    add_action('wp_ajax_bd_menu_check_updates', 'bd_handle_menu_update_check');
+    
+    function bd_handle_menu_update_check() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'bd_menu_updates')) {
+            wp_send_json_error('Security check failed');
+        }
+        
+        // Check permissions
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+        
+        $plugin_file = sanitize_text_field($_POST['plugin_file']);
+        if (empty($plugin_file)) {
+            wp_send_json_error('Invalid plugin file');
+        }
+        
+        try {
+            // Get plugin data
+            $plugin_data = get_plugin_data(WP_PLUGIN_DIR . '/' . $plugin_file);
+            $current_version = $plugin_data['Version'];
+            
+            // Extract GitHub repo from Update URI or Plugin URI
+            $update_uri = $plugin_data['UpdateURI'] ?? $plugin_data['PluginURI'] ?? '';
+            if (empty($update_uri) || strpos($update_uri, 'github.com') === false) {
+                wp_send_json_error('Plugin does not have GitHub integration');
+            }
+            
+            // Extract owner/repo from GitHub URL
+            preg_match('/github\.com\/([^\/]+)\/([^\/]+)/', $update_uri, $matches);
+            if (count($matches) < 3) {
+                wp_send_json_error('Could not parse GitHub repository');
+            }
+            
+            $owner = $matches[1];
+            $repo = $matches[2];
+            
+            // Check GitHub for latest release
+            $api_url = "https://api.github.com/repos/{$owner}/{$repo}/releases/latest";
+            $request = wp_remote_get($api_url, [
+                'timeout' => 15,
+                'headers' => [
+                    'Accept' => 'application/vnd.github.v3+json',
+                    'User-Agent' => 'BD-Menu-Helper/1.0',
+                ]
+            ]);
+            
+            if (is_wp_error($request)) {
+                wp_send_json_error('Could not connect to GitHub: ' . $request->get_error_message());
+            }
+            
+            $response_code = wp_remote_retrieve_response_code($request);
+            if ($response_code !== 200) {
+                wp_send_json_error('GitHub API error: HTTP ' . $response_code);
+            }
+            
+            $body = wp_remote_retrieve_body($request);
+            $data = json_decode($body, true);
+            
+            if (!$data || !isset($data['tag_name'])) {
+                wp_send_json_error('Invalid response from GitHub API');
+            }
+            
+            $latest_version = ltrim($data['tag_name'], 'v');
+            $update_available = version_compare($current_version, $latest_version, '<');
+            
+            // Clear WordPress update cache to force refresh
+            delete_site_transient('update_plugins');
+            
+            $response = [
+                'current_version' => $current_version,
+                'latest_version' => $latest_version,
+                'update_available' => $update_available,
+                'plugin_name' => $plugin_data['Name'],
+                'release_date' => $data['published_at'] ?? '',
+                'release_notes' => wp_trim_words(strip_tags($data['body'] ?? ''), 30),
+                'download_url' => $data['html_url'] ?? '',
+            ];
+            
+            wp_send_json_success($response);
+            
+        } catch (Exception $e) {
+            wp_send_json_error('Error checking for updates: ' . $e->getMessage());
+        }
     }
 }

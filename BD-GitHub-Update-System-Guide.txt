@@ -80,8 +80,16 @@ define('BD_[PLUGIN_CONSTANT]_URL', plugin_dir_url(__FILE__));
 define('BD_[PLUGIN_CONSTANT]_BASENAME', plugin_basename(__FILE__));
 
 // Initialize updater
-require_once BD_[PLUGIN_CONSTANT]_PATH . 'includes/class-bd-updater.php';
-new BD_Plugin_Updater(BD_[PLUGIN_CONSTANT]_FILE, 'buenedata', '[repository-navn]');
+if (is_admin()) {
+    require_once BD_[PLUGIN_CONSTANT]_PATH . 'includes/class-bd-updater.php';
+    new BD_Plugin_Updater(BD_[PLUGIN_CONSTANT]_FILE, 'buenedata', '[repository-navn]');
+}
+
+// Initialize update server (valgfri)
+require_once BD_[PLUGIN_CONSTANT]_PATH . 'includes/class-bd-update-server.php';
+
+// Load menu helper
+require_once BD_[PLUGIN_CONSTANT]_PATH . 'bd-menu-helper.php';
 ```
 
 STEG 2: UPDATER CLASS
@@ -244,7 +252,17 @@ on:
     paths-ignore:
       - 'README.md'
       - '.gitignore'
-      - '.github/**'
+      - 'DEBUG-WORKFLOW.md'
+      - 'DEPLOYMENT-GUIDE.md'
+      - 'GITHUB-ACTIONS-FIX.md'
+      - 'PRIVATE-REPO-SOLUTION.md'
+      - 'QUICK-DEBUG-GUIDE.md'
+      - 'TESTING-INSTRUCTIONS.md'
+      - 'SUCCESS-INSTRUCTIONS.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -259,7 +277,6 @@ jobs:
     - name: Get current version
       id: version
       run: |
-        # Extract version from main plugin file
         VERSION=$(grep -E "Version:\s*[0-9]+\.[0-9]+(\.[0-9]+)?" *.php | head -1 | grep -oE "[0-9]+\.[0-9]+(\.[0-9]+)?")
         echo "current_version=$VERSION" >> $GITHUB_OUTPUT
         echo "Current version: $VERSION"
@@ -280,67 +297,72 @@ jobs:
       id: changelog
       if: steps.check_release.outputs.release_exists == 'false'
       run: |
-        # Get commits since last tag
         LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
         if [ -z "$LAST_TAG" ]; then
-          COMMITS=$(git log --pretty=format:"- %s" --no-merges)
+          COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -10)
         else
-          COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" --no-merges)
+          COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
         fi
         
-        # Create changelog
-        CHANGELOG="## Endringer i versjon ${{ steps.version.outputs.current_version }}
-
-$COMMITS
-
----
-*Automatisk generert av GitHub Actions*"
-        
         echo "changelog<<EOF" >> $GITHUB_OUTPUT
-        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "## 🚀 Endringer i versjon ${{ steps.version.outputs.current_version }}" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### Nye funksjoner og forbedringer:" >> $GITHUB_OUTPUT
+        echo "$COMMITS" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### 📋 Installasjon:" >> $GITHUB_OUTPUT
+        echo "1. Last ned ZIP-filen fra denne releasen" >> $GITHUB_OUTPUT
+        echo "2. Gå til WordPress Admin → Plugins → Legg til ny → Last opp plugin" >> $GITHUB_OUTPUT
+        echo "3. Velg ZIP-filen og installer" >> $GITHUB_OUTPUT
+        echo "4. Aktiver pluginen" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### 🔄 Automatisk oppdatering:" >> $GITHUB_OUTPUT
+        echo "Denne versjonen støtter automatisk oppdatering via WordPress admin." >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "*🤖 Automatisk generert av GitHub Actions*" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Create plugin ZIP
       if: steps.check_release.outputs.release_exists == 'false'
       run: |
-        # Get repository name
         REPO_NAME=$(basename $GITHUB_REPOSITORY)
-        
-        # Create temporary directory
         mkdir -p temp/$REPO_NAME
         
-        # Copy plugin files (exclude development files)
-        rsync -av --exclude='.git*' --exclude='node_modules' --exclude='*.log' --exclude='temp' . temp/$REPO_NAME/
+        rsync -av \
+          --exclude='.git*' \
+          --exclude='node_modules' \
+          --exclude='*.log' \
+          --exclude='temp' \
+          --exclude='.github' \
+          --exclude='tests' \
+          --exclude='*.md' \
+          --exclude='package*.json' \
+          --exclude='composer.*' \
+          --exclude='phpunit.xml' \
+          --exclude='webpack.config.js' \
+          --exclude='gulpfile.js' \
+          --exclude='Gruntfile.js' \
+          . temp/$REPO_NAME/
         
-        # Create ZIP file
         cd temp
         zip -r ../$REPO_NAME.zip $REPO_NAME
         cd ..
         
         echo "Created $REPO_NAME.zip"
+        ls -la $REPO_NAME.zip
 
     - name: Create Release
       if: steps.check_release.outputs.release_exists == 'false'
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      id: create_release
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: v${{ steps.version.outputs.current_version }}
-        release_name: v${{ steps.version.outputs.current_version }}
+        name: "🚀 BD Plugin v${{ steps.version.outputs.current_version }}"
         body: ${{ steps.changelog.outputs.changelog }}
         draft: false
         prerelease: false
-
-    - name: Upload Release Asset
-      if: steps.check_release.outputs.release_exists == 'false'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./${{ github.event.repository.name }}.zip
-        asset_name: ${{ github.event.repository.name }}.zip
-        asset_content_type: application/zip
+        files: ./${{ github.event.repository.name }}.zip
+        token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 STEG 4: VERSJONSHÅNDTERING
@@ -397,20 +419,21 @@ EKSEMPEL IMPLEMENTERING:
 ```php
 // I hovedplugin-filen, legg til etter plugin header:
 
-// Initialize updater if not in admin
-if (!is_admin()) {
-    return;
+// Initialize updater
+if (is_admin()) {
+    require_once plugin_dir_path(__FILE__) . 'includes/class-bd-updater.php';
+    new BD_Plugin_Updater(
+        __FILE__,                    // Plugin file
+        'buenedata',                 // GitHub username
+        'bd-product-sheet-editor'    // Repository name
+    );
 }
 
-// Load updater
-require_once plugin_dir_path(__FILE__) . 'includes/class-bd-updater.php';
+// Initialize update server (valgfri)
+require_once plugin_dir_path(__FILE__) . 'includes/class-bd-update-server.php';
 
-// Initialize with your GitHub details
-new BD_Plugin_Updater(
-    __FILE__,                    // Plugin file
-    'buenedata',                 // GitHub username
-    'bd-product-sheet-editor'    // Repository name
-);
+// Load menu helper
+require_once plugin_dir_path(__FILE__) . 'bd-menu-helper.php';
 ```
 
 ================================================================================
@@ -577,9 +600,16 @@ v1.0 (8. august 2025)
 - Initial GitHub Update System Guide
 - Komplett workflow for automatisk releases
 - WordPress update integration
-- GitHub Actions setup
+- GitHub Actions setup med moderne actions
 - Sikkerhet og beste praksis
 - Feilsøking og testing guide
+
+v1.1 (8. august 2025)
+- Oppdatert til moderne GitHub Actions (softprops/action-gh-release@v1)
+- Lagt til permissions: contents: write
+- Forbedret changelog-generering
+- Fikset paths-ignore for bedre workflow-triggering
+- Lagt til workflow_dispatch for manuell kjøring
 
 ================================================================================
 QUICK START SJEKKLISTE
